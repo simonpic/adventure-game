@@ -26,7 +26,7 @@ type advHandler struct {
 func (h advHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	adv := r.URL.Path[1:]
 	if v, ok := h.adventures[adv]; ok {
-		temp, err := template.ParseFiles("adventure.html")
+		temp, err := template.ParseFiles("templates/adventure.html")
 		if err != nil {
 			fmt.Println(err)
 			http.Error(w, "", http.StatusInternalServerError)
@@ -42,29 +42,106 @@ func (h advHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
-	advFilename := flag.String("f", "adventure.json", "Path of the file containing the adventures.")
+type homeHandler struct {
+	adv advHandler
+}
 
-	m, err := loadAdventures(*advFilename)
+func (h homeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path[1:]
+	if path == "" || path == "home" {
+		home, err := os.ReadFile("templates/home.html")
+		if err != nil {
+			fmt.Println(err)
+			http.Error(w, "", http.StatusInternalServerError)
+		} else {
+			fmt.Fprint(w, string(home))
+		}
+	} else {
+		h.adv.ServeHTTP(w, r)
+	}
+}
+
+type Game interface {
+	start(m map[string]adventure) error
+}
+
+type WebGame struct{}
+
+func (wg WebGame) start(m map[string]adventure) error {
+	http.Handle("/", homeHandler{adv: advHandler{adventures: m}})
+	return http.ListenAndServe(":8080", nil)
+}
+
+type CLIGame struct{}
+
+func (cliG CLIGame) start(m map[string]adventure) error {
+	fmt.Println("Start game in cli mode")
+
+	nextVenture := "intro"
+
+	for nextVenture != "home" {
+		venture := m[nextVenture]
+		fmt.Println(venture.Story)
+
+		l := len(venture.Options)
+		for i := 0; i < l; i++ {
+			fmt.Println(venture.Options[i].Text)
+			fmt.Println("Press", i+1, "to venture to", venture.Options[i].Arc)
+		}
+
+		var choice int
+		for choice < 1 || choice > 2 {
+			_, err := fmt.Scanf("%d", &choice)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		nextVenture = venture.Options[choice-1].Arc
+	}
+
+	os.Exit(0)
+
+	return nil
+}
+
+func newGame(mode string) Game {
+	switch mode {
+	case "web":
+		return WebGame{}
+	case "cli":
+		return CLIGame{}
+	default:
+		log.Fatal("Unknown game mode")
+		return nil
+	}
+}
+
+func loadAdventures(filename string) map[string]adventure {
+	f, err := os.ReadFile(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	http.Handle("/", advHandler{adventures: m})
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	m := map[string]adventure{}
+	err = json.Unmarshal(f, &m)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return m
 }
 
-func loadAdventures(filename string) (map[string]adventure, error) {
-	advJson, err := os.ReadFile("adventure.json")
-	if err != nil {
-		return nil, err
-	}
+func main() {
+	mode := flag.String("i", "cli", "Interface to play the game, web or cli.")
+	advFilename := flag.String("f", "adventure.json", "Path of the file containing the adventures.")
+	flag.Parse()
 
-	m := map[string]adventure{}
-	err = json.Unmarshal(advJson, &m)
-	if err != nil {
-		return nil, err
-	}
+	m := loadAdventures(*advFilename)
 
-	return m, nil
+	game := newGame(*mode)
+	err := game.start(m)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

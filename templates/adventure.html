@@ -1,0 +1,24 @@
+<div>
+   Story {{range $i := .Story}}{{$i}}{{end}}<br>
+</div>
+
+<div class="left">
+   <div class="arc">
+      {{$left := (index .Options 0)}}
+      <a href="/{{$left.Arc}}">{{$left.Arc}}</a>
+   </div>
+   <div class="text">
+      {{$left.Text}}
+   </div>
+</div>
+
+<div class="right">
+   <div class="arc">
+      {{$right := (index .Options 1)}}
+      <a href="/{{$right.Arc}}">{{$right.Arc}}</a>
+   </div>
+   <div class="text">
+      {{$right.Text}}
+   </div>
+</div>
+
